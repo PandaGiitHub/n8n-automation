@@ -1,0 +1,775 @@
+{
+  "name": "Final_Refine_Reciept reader Ai Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "1BgSe4R8s2gPCtlczprS8--JZuluqgVgq",
+          "mode": "list",
+          "cachedResultName": "Unprocessed",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1BgSe4R8s2gPCtlczprS8--JZuluqgVgq"
+        },
+        "event": "fileCreated",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2816,
+        -1584
+      ],
+      "id": "5828a0e8-9779-486b-bfd7-f4473083d445",
+      "name": "Google Drive Trigger",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Lw7gXeYongj9JcP9",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -2592,
+        -1584
+      ],
+      "id": "5965325a-1ae4-4559-ac88-a64d3c55755a",
+      "name": "Download file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Lw7gXeYongj9JcP9",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b1affb75-af29-473c-b1b6-c8c9dd4dd8c5",
+                    "leftValue": "={{ $json.mimeType }}",
+                    "rightValue": "image/png",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PNG"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "3882c41b-9498-4607-9ca8-62a16002b5e9",
+                    "leftValue": "={{ $json.mimeType }}",
+                    "rightValue": "image/jpeg",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "JPG"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -2368,
+        -1584
+      ],
+      "id": "f6c59b94-4b26-4afc-9cfb-8fe65cb39a97",
+      "name": "Switch",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://vision.googleapis.com/v1/images:annotate",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"requests\": [\n    {\n      \"image\": {\n        \"content\": \"{{ $json.base64 }}\"\n      },\n      \"features\": [\n        {\n          \"type\": \"DOCUMENT_TEXT_DETECTION\"\n        }\n      ]\n    }\n  ]\n} ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1920,
+        -1584
+      ],
+      "id": "2c92009e-4065-4109-9d61-0328305e688c",
+      "name": "OCR API"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.responses[0].textAnnotations[0].description }}",
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"date\": {\n      \"type\": \"string\",\n      \"description\": \"Transaction date from the receipt (e.g., YYYY-MM-DD, MM/DD/YYYY, or printed date).\"\n    },\n    \"receiptId\": {\n      \"type\": \"string\",\n      \"description\": \"Receipt number, transaction number, invoice number, or reference ID if present. Return empty string if not found.\"\n    },\n    \"vendor\": {\n      \"type\": \"string\",\n      \"description\": \"Merchant or business name from the receipt header (e.g., Walmart).\"\n    },\n    \"category\": {\n      \"type\": \"string\",\n      \"description\": \"Expense category such as Office Supplies, Meals and Entertainment, Travel, Fuel, Parking, etc., inferred from items.\"\n    },\n    \"expenseType\": {\n      \"type\": \"string\",\n      \"description\": \"Short high-level description of the expense (e.g., Office supplies, Toys purchase, Restaurant meal).\"\n    },\n    \"description\": {\n      \"type\": \"string\",\n      \"description\": \"Item summary WITH COUNTS. Combine identical items and include quantities. Format like: '500SH PAPER x3, MS. RACHEL x1, FIRE TRUCK x1'.\"\n    },\n\n    \"subtotal\": {\n      \"type\": \"number\",\n      \"description\": \"Subtotal amount before taxes/fees/discounts. Look for SUBTOTAL. If not present, return 0.\"\n    },\n\n    \"amount\": {\n      \"type\": \"number\",\n      \"description\": \"Total amount paid in CAD (the final TOTAL shown on the receipt).\"\n    },\n    \"gstHst\": {\n      \"type\": \"number\",\n      \"description\": \"GST or HST amount paid. Look for GST/HST labels. Return 0 if not present.\"\n    },\n    \"pst\": {\n      \"type\": \"number\",\n      \"description\": \"PST amount paid. Return 0 if not present.\"\n    },\n    \"totalTax\": {\n      \"type\": \"number\",\n      \"description\": \"Total tax paid. If not explicitly shown, calculate as GST/HST + PST.\"\n    },\n    \"paymentMethod\": {\n      \"type\": \"string\",\n      \"description\": \"Payment method used. Return one of: Credit Card, Corporate Credit Card, Personal Credit Card, Debit, Cash, or Unknown.\"\n    },\n    \"cardLast4\": {\n      \"type\": \"string\",\n      \"description\": \"Last 4 digits of the credit card number shown on the receipt (e.g., 8268). Return empty string if not found.\"\n    },\n    \"receiptLocation\": {\n      \"type\": \"string\",\n      \"description\": \"Receipt storage location (e.g., Google Drive link). Auto-populated by workflow. Return empty string.\"\n    },\n    \"status\": {\n      \"type\": \"string\",\n      \"description\": \"Always return 'Processed' for automated OCR workflows.\"\n    },\n    \"notes\": {\n      \"type\": \"string\",\n      \"description\": \"Optional notes or business purpose if mentioned on receipt. Otherwise return empty string.\"\n    },\n    \"processedDate\": {\n      \"type\": \"string\",\n      \"description\": \"Auto-populated by workflow with current date and time. Return empty string.\"\n    },\n    \"craLineItem\": {\n      \"type\": \"string\",\n      \"description\": \"CRA T2125 line item corresponding to the category (e.g., Office supplies, Meals & Entertainment).\"\n    },\n    \"storeNumber\": {\n      \"type\": \"string\",\n      \"description\": \"Store number if printed on receipt (e.g., STORE 1061). Return empty string if not found.\"\n    },\n    \"storeAddress\": {\n      \"type\": \"string\",\n      \"description\": \"Full store address from receipt header (street, city, province, postal code combined into one string).\"\n    }\n  },\n  \"required\": [\n    \"date\",\n    \"vendor\",\n    \"category\",\n    \"amount\",\n    \"description\"\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        -1696,
+        -1584
+      ],
+      "id": "b17a3194-6de3-41dc-a013-15e3dc5b41ad",
+      "name": "Information Extractor"
+    },
+    {
+      "parameters": {
+        "model": "invoice-receipt-extractor",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAzureOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -1696,
+        -1248
+      ],
+      "id": "8b8d94de-edef-476d-8a64-843a2f253ee8",
+      "name": "Azure OpenAI Chat Model",
+      "notesInFlow": true,
+      "credentials": {
+        "azureOpenAiApi": {
+          "id": "zfTnNU85Cz1y43LZ",
+          "name": "Azure Open AI account"
+        }
+      },
+      "notes": "TEST NOTE "
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9207b491-0072-49dd-b58f-486eda3849eb",
+              "name": "date",
+              "value": "={{ $json.output.date }}",
+              "type": "string"
+            },
+            {
+              "id": "caf0aa52-db76-4449-95e0-0e0ffe51f8d1",
+              "name": "category",
+              "value": "={{ $json.output.category }}",
+              "type": "string"
+            },
+            {
+              "id": "0462a257-b557-4c12-b8f0-3600448c1380",
+              "name": "vendor",
+              "value": "={{ $json.output.vendor }}",
+              "type": "string"
+            },
+            {
+              "id": "96bb42cf-c957-4019-b0a9-b5e96029d1f9",
+              "name": "description",
+              "value": "={{ $json.output.description }}",
+              "type": "string"
+            },
+            {
+              "id": "e838de96-3a18-4f7e-85c8-23887d944bce",
+              "name": "totalAmount",
+              "value": "={{ $json.output.amount }}",
+              "type": "number"
+            },
+            {
+              "id": "7403777d-75a0-42e1-8e75-a5042dce223a",
+              "name": "subTotal",
+              "value": "={{ $json.output.subtotal }}",
+              "type": "number"
+            },
+            {
+              "id": "5efb44ca-e294-4b9f-9f67-b22f7121fc15",
+              "name": "gstHst",
+              "value": "={{ $json.output.gstHst }}",
+              "type": "number"
+            },
+            {
+              "id": "f168ea0a-0990-4ef3-add1-3ba49348703a",
+              "name": "pst",
+              "value": "={{ $json.output.pst }}",
+              "type": "number"
+            },
+            {
+              "id": "1b707cc3-82f2-4cdf-8b49-063f81d89a7d",
+              "name": "totalTax",
+              "value": "={{ $json.output.totalTax }}",
+              "type": "number"
+            },
+            {
+              "id": "75c4d0d7-60c7-4c09-b093-6221535c0767",
+              "name": "paymentMethod",
+              "value": "={{ $json.output.paymentMethod }}",
+              "type": "string"
+            },
+            {
+              "id": "6880c691-124f-4948-afc7-4d9c97a690cb",
+              "name": "cardLast4",
+              "value": "={{ $json.output.cardLast4 }}",
+              "type": "string"
+            },
+            {
+              "id": "e5b40b0f-54dd-4c26-97a3-ee474be9086a",
+              "name": "status",
+              "value": "Processed",
+              "type": "string"
+            },
+            {
+              "id": "c610c6f2-d77d-4710-a661-09ad0c413493",
+              "name": "processedDate",
+              "value": "={{$now.format('yyyy-MM-dd HH:mm')}}",
+              "type": "string"
+            },
+            {
+              "id": "1b0f5634-99cd-46cb-925c-d77dea23cf69",
+              "name": "receiptLocation",
+              "value": "={{$('Download file').item.json.webViewLink}}",
+              "type": "string"
+            },
+            {
+              "id": "7b680694-622f-43b9-92a0-784a8161516f",
+              "name": "craLineItem",
+              "value": "={{ $json.output.craLineItem }}",
+              "type": "string"
+            },
+            {
+              "id": "48014695-6631-44fd-88c7-6e1fb7e6d82a",
+              "name": "receiptId",
+              "value": "={{ $json.output.receiptId }}",
+              "type": "string"
+            },
+            {
+              "id": "40c4c8f2-6a4b-4011-b525-c08ba2bb2819",
+              "name": "expenseType",
+              "value": "={{ $json.output.expenseType }}",
+              "type": "string"
+            },
+            {
+              "id": "65134fb2-1633-4629-b2b8-472889883dc6",
+              "name": "notes",
+              "value": "={{ $json.output.notes }}",
+              "type": "string"
+            },
+            {
+              "id": "9963e38b-eaa1-4429-a5bc-973959a64b8e",
+              "name": "storeNumber",
+              "value": "={{ $json.output.storeNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "d605d2e2-910f-4024-a3df-0fe511c741f4",
+              "name": "storeAddress",
+              "value": "={{ $json.output.storeAddress }}",
+              "type": "string"
+            },
+            {
+              "id": "784f487f-0bf9-4e56-8476-345c375f4cec",
+              "name": "driveFileName",
+              "value": "={{ $('Download file').item.json.originalFilename }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1344,
+        -1584
+      ],
+      "id": "36c3996a-7e1d-49d2-9d3f-adac9a0a9a18",
+      "name": "Flatten + Defaults"
+    },
+    {
+      "parameters": {
+        "operation": "binaryToPropery",
+        "destinationKey": "base64",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -2144,
+        -1584
+      ],
+      "id": "37306277-8c76-4be4-a812-9e714c8592e0",
+      "name": "Convert into B64 "
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1cyQZikiN3Ug7USHs82-2Hz1E3oDJ2ceaRqobELJ4Pog",
+          "mode": "list",
+          "cachedResultName": "2025 Business Expenses",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1cyQZikiN3Ug7USHs82-2Hz1E3oDJ2ceaRqobELJ4Pog/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1387017185,
+          "mode": "list",
+          "cachedResultName": "SHEET 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1cyQZikiN3Ug7USHs82-2Hz1E3oDJ2ceaRqobELJ4Pog/edit#gid=1387017185"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ $json.date }}",
+            "category": "={{ $json.category }}",
+            "vendor": "={{ $json.vendor }}",
+            "description": "={{ $json.description }}",
+            "gstHst": "={{ $json.gstHst }}",
+            "pst": "={{ $json.pst }}",
+            "totalTax": "={{ $json.totalTax }}",
+            "paymentMethod": "={{ $json.paymentMethod }}",
+            "cardLast4": "={{ $json.cardLast4 }}",
+            "processedDate": "={{ $json.processedDate }}",
+            "receiptLocation": "={{ $json.receiptLocation }}",
+            "craLineItem": "={{ $json.craLineItem }}",
+            "status": "={{ $json.status }}",
+            "storeAddress": "={{ $json.storeAddress }}",
+            "driveFileName": "={{ $json.driveFileName }}",
+            "receiptId": "={{ $json.receiptId }}",
+            "expenseType": "={{ $json.expenseType }}",
+            "storeNumber": "={{ $json.storeNumber }}",
+            "subTotal": "={{ $json.subTotal }}",
+            "totalAmount": "={{ $json.totalAmount }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "vendor",
+              "displayName": "vendor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "totalAmount",
+              "displayName": "totalAmount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "subTotal",
+              "displayName": "subTotal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "gstHst",
+              "displayName": "gstHst",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pst",
+              "displayName": "pst",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "totalTax",
+              "displayName": "totalTax",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "paymentMethod",
+              "displayName": "paymentMethod",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "cardLast4",
+              "displayName": "cardLast4",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "processedDate",
+              "displayName": "processedDate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "receiptLocation",
+              "displayName": "receiptLocation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "craLineItem",
+              "displayName": "craLineItem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "receiptId",
+              "displayName": "receiptId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "expenseType",
+              "displayName": "expenseType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "numberOfItemsSold",
+              "displayName": "numberOfItemsSold",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "storeNumber",
+              "displayName": "storeNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "storeAddress",
+              "displayName": "storeAddress",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "driveFileName",
+              "displayName": "driveFileName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1120,
+        -1584
+      ],
+      "id": "08da1d67-dada-40bc-9b8d-0b44c23ab4b0",
+      "name": "2025 Business Expenses",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "yvIHE3i3SxewSIOb",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Download file').item.json.id }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1gCtUM_KVByjBxlbaHkjcpPbJMIVRBCAM",
+          "mode": "list",
+          "cachedResultName": "Processed",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1gCtUM_KVByjBxlbaHkjcpPbJMIVRBCAM"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -848,
+        -1584
+      ],
+      "id": "48ee1457-28cb-4e96-a7f0-101e7c04bb11",
+      "name": "Move file to Processed",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Lw7gXeYongj9JcP9",
+          "name": "Google Drive account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Convert into B64 ",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Convert into B64 ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OCR API": {
+      "main": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Azure OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Information Extractor": {
+      "main": [
+        [
+          {
+            "node": "Flatten + Defaults",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten + Defaults": {
+      "main": [
+        [
+          {
+            "node": "2025 Business Expenses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert into B64 ": {
+      "main": [
+        [
+          {
+            "node": "OCR API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2025 Business Expenses": {
+      "main": [
+        [
+          {
+            "node": "Move file to Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "323976db-5665-4daa-885c-99ea988c040d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c7d1eeb4cc55f788230a1da5b5df848e1008ae80580e0d34e2c8a231cf5afef8"
+  },
+  "id": "S8yrFX1tsvU3yt7u",
+  "tags": []
+}
